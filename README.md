@@ -1,2 +1,2 @@
 # ddns-go-unraid
-this is unraid's plugin with ddns-go 
+this is unraid's plugin with ddns-go (non-Docker version)
