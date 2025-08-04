@@ -14,11 +14,11 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;" icon="&iconURL;" min="7.0.0">
 
   <DESCRIPTION>
-    A lightweight DDNS client for Unraid using jeessy2/ddns-go v6.12.1 (non-Docker version) with built-in WebUI.
+    A lightweight DDNS client for Unraid using jeessy2/ddns-go v6.12.1 (non-Docker version).
   </DESCRIPTION>
 
   <CHANGELOG>
-    &version; - Initial release with WebUI, restart option, and status check.
+    &version; - Initial release.
   </CHANGELOG>
 
   <!-- Installation Script -->
