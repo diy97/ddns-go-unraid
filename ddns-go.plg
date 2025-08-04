@@ -1,0 +1,130 @@
+<?xml version='1.0' standalone='yes'?>
+
+<!DOCTYPE PLUGIN [
+<!ENTITY name       "ddns-go">
+<!ENTITY author     "diy97">
+<!ENTITY version    "2025.08.04">
+<!ENTITY github     "diy97/ddns-go-unraid">
+<!ENTITY branch     "master">
+<!ENTITY pluginURL  "https://raw.githubusercontent.com/&github;/&branch;/ddns-go.plg">
+<!ENTITY binURL     "https://github.com/jeessy2/ddns-go/releases/download/v6.12.1/ddns-go_6.12.1_linux_x86_64.tar.gz">
+<!ENTITY iconURL    "https://raw.githubusercontent.com/&github;/&branch;/unraid/ddns-go.png">
+]>
+
+<PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;" icon="&iconURL;" min="7.0.0">
+
+  <DESCRIPTION>
+    A lightweight DDNS client for Unraid using jeessy2/ddns-go v6.12.1 (non-Docker version) with built-in WebUI.
+  </DESCRIPTION>
+
+  <CHANGELOG>
+    &version; - Initial release with WebUI, restart option, and status check.
+  </CHANGELOG>
+
+  <!-- Installation Script -->
+  <FILE Run="/bin/bash">
+    <INLINE>
+    <![CDATA[
+#!/bin/bash
+
+# Variables
+CONFIG_DIR="/boot/config/plugins/ddns-go"
+BIN_DIR="/usr/local/bin"
+SERVICE_FILE="/etc/rc.d/rc.ddns-go"
+DDNS_GO_URL="https://github.com/jeessy2/ddns-go/releases/download/v6.12.1/ddns-go_6.12.1_linux_x86_64.tar.gz"
+TEMP_DIR="/tmp/ddns-go-install"
+
+echo "Installing ddns-go..."
+
+mkdir -p "$CONFIG_DIR" "$BIN_DIR" "$TEMP_DIR"
+
+echo "Downloading ddns-go..."
+wget --user-agent="Mozilla/5.0" -qO "$TEMP_DIR/ddns-go.tar.gz" "$DDNS_GO_URL"
+if [ $? -ne 0 ]; then
+  echo "Error: Failed to download ddns-go binary."
+  exit 1
+fi
+
+tar -xzf "$TEMP_DIR/ddns-go.tar.gz" -C "$TEMP_DIR"
+mv "$TEMP_DIR/ddns-go" "$BIN_DIR/ddns-go"
+chmod +x "$BIN_DIR/ddns-go"
+rm -rf "$TEMP_DIR"
+
+# Default config
+if [ ! -f "$CONFIG_DIR/config.yaml" ]; then
+  echo "Creating default config..."
+  cat << EOF > "$CONFIG_DIR/config.yaml"
+dnsConf:
+  ipv4:
+    enable: true
+    domains:
+      - sub.example.com
+    provider: "cloudflare"
+    credentials:
+      apiKey: "your-api-key"
+  interval: "5m"
+EOF
+fi
+
+# Service file
+cat << EOF > "$SERVICE_FILE"
+#!/bin/bash
+CONFIG_DIR="$CONFIG_DIR"
+BIN_DIR="$BIN_DIR"
+
+case "\$1" in
+  start)
+    echo "Starting ddns-go..."
+    \$BIN_DIR/ddns-go -c \$CONFIG_DIR/config.yaml -l :9876 -f 300 > /var/log/ddns-go.log 2>&1 &
+    echo \$! > /var/run/ddns-go.pid
+    ;;
+  stop)
+    echo "Stopping ddns-go..."
+    [ -f /var/run/ddns-go.pid ] && kill \$(cat /var/run/ddns-go.pid) && rm -f /var/run/ddns-go.pid
+    ;;
+  status)
+    if [ -f /var/run/ddns-go.pid ] && ps -p \$(cat /var/run/ddns-go.pid) > /dev/null; then
+      echo "ddns-go is running."
+      exit 0
+    else
+      echo "ddns-go is not running."
+      exit 1
+    fi
+    ;;
+esac
+EOF
+
+chmod +x "$SERVICE_FILE"
+
+# Add to go
+grep -q "$SERVICE_FILE start" /boot/config/go || echo "$SERVICE_FILE start" >> /boot/config/go
+
+# Start service
+"$SERVICE_FILE" start
+
+echo "ddns-go installed. WebUI at http://$(hostname -s):9876"
+    ]]>
+    </INLINE>
+  </FILE>
+
+  <!-- Uninstallation Script -->
+  <FILE Run="/bin/bash" Method="remove">
+    <INLINE>
+    <![CDATA[
+#!/bin/bash
+SERVICE_FILE="/etc/rc.d/rc.ddns-go"
+BIN_DIR="/usr/local/bin"
+CONFIG_DIR="/boot/config/plugins/ddns-go"
+
+[ -f "$SERVICE_FILE" ] && "$SERVICE_FILE" stop
+rm -f "$SERVICE_FILE"
+rm -f "$BIN_DIR/ddns-go"
+sed -i '/rc.ddns-go start/d' /boot/config/go
+rm -rf /usr/local/emhttp/plugins/ddns-go
+
+echo "ddns-go uninstalled."
+    ]]>
+    </INLINE>
+  </FILE>
+
+</PLUGIN>
