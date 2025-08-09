@@ -1,0 +1,26 @@
+#!/bin/bash
+# FILE: rc.ddns-go
+
+CONFIG_PATH="/boot/config/plugins/ddns-go/.config.yaml"
+BIN_PATH="/usr/local/bin/ddns-go"
+LOG_PATH="/var/log/ddns-go.log"
+PID_FILE="/var/run/ddns-go.pid"
+
+case "$1" in
+  start)
+    echo "Starting ddns-go..."
+    $BIN_PATH -c $CONFIG_PATH -l :9876 > $LOG_PATH 2>&1 &
+    echo $! > $PID_FILE
+    ;;
+  stop)
+    echo "Stopping ddns-go..."
+    [ -f $PID_FILE ] && kill $(cat $PID_FILE) && rm -f $PID_FILE
+    ;;
+  status)
+    if [ -f $PID_FILE ] && ps -p $(cat $PID_FILE) > /dev/null; then
+      exit 0 # Running
+    else
+      exit 1 # Stopped
+    fi
+    ;;
+esac
