@@ -78,7 +78,7 @@ if (isset($_GET['action'])) {
 
 
 <h2>DDns-go 服务管理</h2>
-<p id="status" class="unknown">当前状态: 检测中...</p>
+<p id="status" class="unknown">当前状态:  <?php echo getServiceStatus();?></p>
 
 <button id="startBtn" onclick="sendAction('startService')">启动</button>
 <button id="stopBtn" onclick="sendAction('stopService')">停止</button>
