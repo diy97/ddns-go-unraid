@@ -130,7 +130,7 @@ if (isset($_GET['action'])) {
 
 <script src="/webGui/javascript/jquery.min.js"></script>
 <style>
-    .unraid-card { background-color: #313131; border: 1px solid #4D4D4D; border-radius: 6px; padding: 18px; margin-bottom: 20px; }
+    .unraid-card {border: 1px solid #4D4D4D; border-radius: 6px; padding: 18px; margin-bottom: 20px; }
     h3 { margin-top: 0; color: #FFF; }
     .info-table { width: 100%; border-collapse: collapse; }
     .info-table td { padding: 6px; vertical-align: middle; }
