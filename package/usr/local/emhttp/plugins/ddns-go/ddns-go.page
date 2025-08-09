@@ -7,87 +7,135 @@ Markdown="false"
 ---
 
 <?php
-// 定义服务脚本路径
-define('SERVICE_SCRIPT', '/etc/rc.d/rc.ddns-go');
+// 统一返回 JSON
+function sendResponse($success, $message, $status = null) {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => $success,
+        'message' => $message,
+        'status'  => $status
+    ]);
+    exit;
+}
 
-// 运行服务命令的函数
+// 执行 rc.ddns-go 命令
 function runServiceCommand($cmd) {
-    $script = escapeshellcmd(SERVICE_SCRIPT);
+    $script = '/etc/rc.d/rc.ddns-go';
+    if (!file_exists($script)) {
+        return ['success' => false, 'message' => "服务脚本不存在: $script"];
+    }
     $output = [];
-    $ret = 0;
-
-    // 通过 /bin/bash 调用，避免直接执行权限问题
+    $ret = 1;
     exec("/bin/bash $script $cmd 2>&1", $output, $ret);
-
     return [
         'success' => ($ret === 0),
         'message' => implode("\n", $output),
-        'code'    => $ret
+        'ret'     => $ret
     ];
 }
 
-// 检查当前服务状态
+// 状态检测
 function getServiceStatus() {
-    $status = runServiceCommand('status');
-    $output = strtolower($status['message']);
-    if (strpos($output, 'running') !== false || strpos($output, 'started') !== false) {
+    $res = runServiceCommand('status');
+    $msg = strtolower($res['message']);
+    if (strpos($msg, 'running') !== false || strpos($msg, 'started') !== false) {
         return 'running';
     }
-    return 'stopped';
+    if (strpos($msg, 'stopped') !== false || strpos($msg, 'not running') !== false) {
+        return 'stopped';
+    }
+    // 如果脚本没输出任何已知关键字，用返回码判断
+    return $res['success'] ? 'running' : 'stopped';
 }
-
 
 // 处理 AJAX 请求
 if (isset($_GET['action'])) {
-    $action = $_GET['action'];
-    $response = ['success' => false, 'message' => '未知操作'];
-
-    switch ($action) {
-        case 'startService':
-            $response = runServiceCommand('start');
-            break;
-
-        case 'stopService':
-            $response = runServiceCommand('stop');
-            break;
-
-        case 'restartService':
-            $response = runServiceCommand('restart');
-            break;
-
+    switch ($_GET['action']) {
         case 'statusService':
-            $response = ['success' => true, 'status' => getServiceStatus()];
-            break;
+            $status = getServiceStatus();
+            sendResponse(true, "状态检测完成", $status);
+        case 'startService':
+            $res = runServiceCommand('start');
+            sendResponse($res['success'], $res['message'], getServiceStatus());
+        case 'stopService':
+            $res = runServiceCommand('stop');
+            sendResponse($res['success'], $res['message'], getServiceStatus());
+        case 'restartService':
+            $res = runServiceCommand('restart');
+            sendResponse($res['success'], $res['message'], getServiceStatus());
+        default:
+            sendResponse(false, "未知操作: " . $_GET['action']);
     }
-
-    header('Content-Type: application/json');
-    echo json_encode($response);
-    exit;
 }
 ?>
 
+<style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    #status { font-weight: bold; }
+    button { padding: 5px 10px; margin-right: 10px; }
+    .running { color: green; }
+    .stopped { color: red; }
+    .unknown { color: gray; }
+</style>
 
-    <script>
-        function sendAction(action) {
-            fetch('?action=' + action)
-                .then(res => res.json())
-                .then(data => {
-                    alert('执行结果: ' + (data.message || '无输出'));
-                    if (action === 'statusService') {
-                        document.getElementById('status').innerText = '当前状态: ' + data.status;
-                    }
-                });
-        }
-        function refreshStatus() {
-            sendAction('statusService');
-        }
-        window.onload = refreshStatus;
-    </script>
 
-    <h1>ddns-go 控制面板</h1>
-    <p id="status">当前状态: 检测中...</p>
-    <button onclick="sendAction('startService')">启动</button>
-    <button onclick="sendAction('stopService')">停止</button>
-    <button onclick="sendAction('restartService')">重启</button>
-    <button onclick="refreshStatus()">刷新状态</button>
+<h2>DDns-go 服务管理</h2>
+<p id="status" class="unknown">当前状态: 检测中...</p>
+
+<button id="startBtn" onclick="sendAction('startService')">启动</button>
+<button id="stopBtn" onclick="sendAction('stopService')">停止</button>
+<button id="restartBtn" onclick="sendAction('restartService')">重启</button>
+<button onclick="refreshStatus()">刷新状态</button>
+
+<script>
+function refreshStatus() {
+    fetch('?action=statusService')
+        .then(res => res.json())
+        .then(data => {
+            let statusEl = document.getElementById('status');
+            let startBtn = document.getElementById('startBtn');
+            let stopBtn = document.getElementById('stopBtn');
+            let restartBtn = document.getElementById('restartBtn');
+
+            if (data.success) {
+                statusEl.innerText = '当前状态: ' + data.status;
+                statusEl.className = data.status === 'running' ? 'running' :
+                                     data.status === 'stopped' ? 'stopped' : 'unknown';
+
+                if (data.status === 'running') {
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    restartBtn.disabled = false;
+                } else {
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                    restartBtn.disabled = true;
+                }
+            } else {
+                statusEl.innerText = '状态获取失败: ' + (data.message || '');
+                statusEl.className = 'unknown';
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                restartBtn.disabled = true;
+            }
+        })
+        .catch(err => {
+            console.error(err);
+        });
+}
+
+function sendAction(action) {
+    fetch('?action=' + action)
+        .then(res => res.json())
+        .then(data => {
+            alert(data.message || (data.success ? '操作成功' : '操作失败'));
+            refreshStatus();
+        })
+        .catch(err => {
+            console.error(err);
+        });
+}
+
+window.onload = refreshStatus;
+</script>
 
