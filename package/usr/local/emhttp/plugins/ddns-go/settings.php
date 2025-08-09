@@ -85,10 +85,8 @@ function parseDdnsRecords() {
     return array_values($domains);
 }
 ?>
-<html>
-<head>
-    <title>ddns-go Control Panel</title>
-    <script src="/webGui/javascript/jquery.min.js"></script>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <style>
         .unraid-card { margin-bottom: 20px; padding: 20px; border: 1px solid #4D4D4D; background-color: #373737; border-radius: 3px; }
         .unraid-card h3 { margin-top: 0; color: #E0E0E0; }
@@ -102,8 +100,7 @@ function parseDdnsRecords() {
         .spinner { display: inline-block; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 20px; height: 20px; animation: spin 2s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
-</head>
-<body>
+
 <div class="unraid-card">
     <h3>服务状态与控制</h3>
     <table class="info-table">
@@ -165,5 +162,3 @@ $(document).ready(function() {
     }
 });
 </script>
-</body>
-</html>
