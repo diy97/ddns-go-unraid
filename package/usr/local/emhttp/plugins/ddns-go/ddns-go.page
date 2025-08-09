@@ -70,38 +70,25 @@ if (isset($_GET['action'])) {
 
 <script src="/jquery.min.js"></script>
 <style>
-    .unraid-card {border: 1px solid #4D4D4D; border-radius: 6px; padding: 18px; margin-bottom: 20px; }
-    h3 { margin-top: 0; }
-    .info-table { width: 100%; border-collapse: collapse; }
-    .info-table td { padding: 6px; vertical-align: middle; }
-    .info-table td:first-child { font-weight: bold; width: 160px; color:#d0d0d0; }
-    button { cursor: pointer; padding: 8px 12px; border-radius: 4px; margin-right: 10px; }
-    #records-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-    #records-table th, #records-table td { padding: 8px; border: 1px solid #4D4D4D; text-align: left; }
-    #records-table th { background-color: #404040; }
+    #status { font-weight: bold; }
+    button { padding: 5px 10px; margin-right: 10px; }
     .running { color: green; }
     .stopped { color: red; }
     .unknown { color: gray; }
 </style>
 
 
-<div class="unraid-card">
+<div>
     <h3>服务状态与控制</h3>
     <p>当前状态: <span class="unknown" ><?php echo getServiceStatus();?></span></p>
     <div>
-        <button id="startBtn"  onclick="sendAction('startService')">🟢 启动</button>
-        <button id="stopBtn"  onclick="sendAction('stopService')">🔴 停止</button>
-        <button id="restartBtn"  onclick="sendAction('restartService')" >🔄 重启</button>
-        <button onclick="refreshStatus()">🔄 刷新状态</button>
+        <button id="startBtn" onclick="sendAction('startService')">启动</button>
+        <button id="stopBtn" onclick="sendAction('stopService')">停止</button>
+        <button id="restartBtn" onclick="sendAction('restartService')">重启</button>
+        <button onclick="refreshStatus()">刷新状态</button>
     </div>
 </div>
 
-<div class="unraid-card">
-    <h3>DNS 记录状态
-        <button id="btn-refresh-records" style="float: right; font-size: 12px; padding: 6px 10px;">🔄 刷新</button>
-    </h3>
-    <div id="records-container"><span></span> 加载中...</div>
-</div>
 
 <script>
 function refreshStatus() {
