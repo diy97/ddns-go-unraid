@@ -29,8 +29,13 @@ function runServiceCommand($cmd) {
 // 检查当前服务状态
 function getServiceStatus() {
     $status = runServiceCommand('status');
-    return $status['success'] ? 'running' : 'stopped';
+    $output = strtolower($status['message']);
+    if (strpos($output, 'running') !== false || strpos($output, 'started') !== false) {
+        return 'running';
+    }
+    return 'stopped';
 }
+
 
 // 处理 AJAX 请求
 if (isset($_GET['action'])) {
