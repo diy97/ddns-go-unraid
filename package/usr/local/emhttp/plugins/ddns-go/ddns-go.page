@@ -6,57 +6,87 @@ Tabs="true"
 Markdown="false"
 ---
 
-
 <?php
-header('Content-Type: application/json');
-
-$script = '/etc/rc.d/rc.ddns-go';
-
-function runCmd($cmd) {
-    global $script;
-    if (!file_exists($script)) {
-        return ['success' => false, 'message' => "找不到脚本 $script"];
-    }
-    exec("/bin/bash $script $cmd 2>&1", $out, $ret);
-    return ['success' => $ret === 0, 'message' => implode("\n", $out), 'ret' => $ret];
-}
-
-function getStatus() {
-    global $script;
-    exec("/bin/bash $script status 2>&1", $out, $ret);
-    return ['status' => ($ret === 0 ? 'running' : 'stopped'), 'output' => $out];
-}
-
-$action = $_GET['action'] ?? '';
-
-if (!$action) {
-    echo json_encode(['success'=>false,'message'=>'未指定action']);
+// 统一返回 JSON
+function sendResponse($success, $message, $status = null) {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => $success,
+        'message' => $message,
+        'status'  => $status
+    ]);
     exit;
 }
 
-switch ($action) {
-    case 'statusService':
-        $st = getStatus();
-        echo json_encode(['success'=>true, 'status'=>$st['status'], 'output'=>$st['output']]);
-        break;
-    case 'startService':
-    case 'stopService':
-    case 'restartService':
-        $res = runCmd(str_replace('Service','',$action));
-        $st = getStatus();
-        echo json_encode([
-            'success' => $res['success'],
-            'message' => $res['message'],
-            'status' => $st['status']
-        ]);
-        break;
-    default:
-        echo json_encode(['success'=>false,'message'=>"未知action：$action"]);
+// 执行 rc.ddns-go 命令
+function runServiceCommand($cmd) {
+    $script = '/etc/rc.d/rc.ddns-go';
+    if (!file_exists($script)) {
+        return ['success' => false, 'message' => "服务脚本不存在: $script"];
+    }
+    $output = [];
+    $ret = 1;
+    exec("/bin/bash $script $cmd 2>&1", $output, $ret);
+    return [
+        'success' => ($ret === 0),
+        'message' => implode("\n", $output),
+        'ret'     => $ret
+    ];
 }
-exit;
-?>
-<style>
 
+// 状态检测
+function getServiceStatus() {
+    exec("bash /etc/rc.d/rc.ddns-go status", $output, $exitCode);
+
+    if ($exitCode === 0) {
+        return 'running';
+    } else {
+        return 'stopped';
+    }
+}
+
+
+// 处理 AJAX 请求
+if (isset($_GET['action'])) {
+    switch ($_GET['action']) {
+        case 'statusService':
+            $status = getServiceStatus();
+            sendResponse(true, "状态检测完成", $status);
+        case 'startService':
+            $res = runServiceCommand('start');
+            sendResponse($res['success'], $res['message'], getServiceStatus());
+        case 'stopService':
+            $res = runServiceCommand('stop');
+            sendResponse($res['success'], $res['message'], getServiceStatus());
+        case 'restartService':
+            $res = runServiceCommand('restart');
+            sendResponse($res['success'], $res['message'], getServiceStatus());
+        default:
+            sendResponse(false, "未知操作: " . $_GET['action']);
+    }
+}
+?>
+
+
+<script src="/jquery.min.js"></script>
+<style>
+    .unraid-card {border: 1px solid #4D4D4D; border-radius: 6px; padding: 18px; margin-bottom: 20px; }
+    h3 { margin-top: 0; }
+    .info-table { width: 100%; border-collapse: collapse; }
+    .info-table td { padding: 6px; vertical-align: middle; }
+    .info-table td:first-child { font-weight: bold; width: 160px; color:#d0d0d0; }
+    .status-running { color: #8BC34A; }
+    .status-stopped { color: #F44336; }
+    .status-ok { color: #8BC34A; }
+    .status-nochange { color: #9E9E9E; }
+    .status-error { color: #F44336; }
+    button { cursor: pointer; padding: 8px 12px; border-radius: 4px; border: 1px solid #636363; margin-right: 10px; }
+    button:disabled { cursor: not-allowed;color: #888; }
+    #records-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    #records-table th, #records-table td { padding: 8px; border: 1px solid #4D4D4D; text-align: left; }
+    #records-table th { background-color: #404040; }
+    .spinner { display: inline-block; border: 3px solid #3a3a3a; border-top: 3px solid #9aa7ff; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; vertical-align: middle; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 button { margin-right: 10px; padding: 8px 12px; background: #444; color: #eee; border: none; border-radius: 4px; cursor: pointer; }
 button:disabled { background: #666; cursor: not-allowed; }
 #status { margin-bottom: 20px; font-weight: bold; }
@@ -64,83 +94,73 @@ button:disabled { background: #666; cursor: not-allowed; }
 .status-stopped { color: #F44336; }
 </style>
 
-<h2>ddns-go 服务管理</h2>
 
-<p id="status" class="status-unknown">状态：检测中...</p>
+<div class="unraid-card">
+    <h3>服务状态与控制</h3>
+    <p>当前状态: <span id="service-status" class="spinner"><?php echo getServiceStatus();?></span></p>
+    <div>
+        <button id="btn-start" disabled onclick="sendAction('startService')">🟢 启动</button>
+        <button id="btn-stop" disabled  onclick="sendAction('stopService')">🔴 停止</button>
+        <button id="btn-restart" disabled onclick="sendAction('restartService')" >🔄 重启</button>
+        <button id="btn-refresh" onclick="refreshStatus()">🔄 刷新状态</button>
+    </div>
+</div>
 
-<button id="startBtn" disabled>启动</button>
-<button id="stopBtn" disabled>停止</button>
-<button id="restartBtn" disabled>重启</button>
-<button id="refreshBtn">刷新状态</button>
+<div class="unraid-card">
+    <h3>DNS 记录状态
+        <button id="btn-refresh-records" style="float: right; font-size: 12px; padding: 6px 10px;">🔄 刷新</button>
+    </h3>
+    <div id="records-container"><span class="spinner"></span> 加载中...</div>
+</div>
 
 <script>
-function log(msg) {
-    console.log(msg);
-}
-
-function updateButtons(status) {
-    if(status === 'running') {
-        document.getElementById('startBtn').disabled = true;
-        document.getElementById('stopBtn').disabled = false;
-        document.getElementById('restartBtn').disabled = false;
-    } else if(status === 'stopped') {
-        document.getElementById('startBtn').disabled = false;
-        document.getElementById('stopBtn').disabled = true;
-        document.getElementById('restartBtn').disabled = true;
-    } else {
-        document.getElementById('startBtn').disabled = true;
-        document.getElementById('stopBtn').disabled = true;
-        document.getElementById('restartBtn').disabled = true;
-    }
-}
-
-function setStatus(text, cssClass) {
-    let statusEl = document.getElementById('status');
-    statusEl.textContent = '状态：' + text;
-    statusEl.className = cssClass || '';
-}
-
-function fetchStatus() {
-    setStatus('检测中...', '');
+function refreshStatus() {
     fetch('?action=statusService')
-    .then(res=>res.json())
-    .then(data=>{
-        log('状态检测返回: ' + JSON.stringify(data));
-        if(data.success) {
-            let st = data.status;
-            setStatus(st === 'running' ? '🟢 运行中' : (st === 'stopped' ? '🔴 已停止' : '未知'), 'status-' + st);
-            updateButtons(st);
-        } else {
-            setStatus('状态获取失败: ' + data.message, 'status-stopped');
-            updateButtons(null);
-        }
-    }).catch(err=>{
-        log('请求错误: ' + err);
-        setStatus('请求错误', 'status-stopped');
-        updateButtons(null);
-    });
+        .then(res => res.json())
+        .then(data => {
+            let statusEl = document.getElementById('status');
+            let startBtn = document.getElementById('startBtn');
+            let stopBtn = document.getElementById('stopBtn');
+            let restartBtn = document.getElementById('restartBtn');
+
+            if (data.success) {
+                statusEl.innerText = '当前状态: ' + data.status;
+                statusEl.className = data.status === 'running' ? 'running' :
+                                     data.status === 'stopped' ? 'stopped' : 'unknown';
+
+                if (data.status === 'running') {
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    restartBtn.disabled = false;
+                } else {
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                    restartBtn.disabled = true;
+                }
+            } else {
+                statusEl.innerText = '状态获取失败: ' + (data.message || '');
+                statusEl.className = 'unknown';
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                restartBtn.disabled = true;
+            }
+        })
+        .catch(err => {
+            console.error(err);
+        });
 }
 
-function sendCommand(action) {
-    setStatus('发送命令中...', '');
-    updateButtons(true);
+function sendAction(action) {
     fetch('?action=' + action)
-    .then(res=>res.json())
-    .then(data=>{
-        log('命令返回: ' + JSON.stringify(data));
-        alert(data.message || (data.success ? '操作成功' : '操作失败'));
-        fetchStatus();
-    }).catch(err=>{
-        log('命令请求错误: ' + err);
-        alert('请求失败');
-        fetchStatus();
-    });
+        .then(res => res.json())
+        .then(data => {
+            alert(data.message || (data.success ? '操作成功' : '操作失败'));
+            refreshStatus();
+        })
+        .catch(err => {
+            console.error(err);
+        });
 }
 
-document.getElementById('startBtn').onclick = () => sendCommand('startService');
-document.getElementById('stopBtn').onclick = () => sendCommand('stopService');
-document.getElementById('restartBtn').onclick = () => sendCommand('restartService');
-document.getElementById('refreshBtn').onclick = fetchStatus;
-
-window.onload = fetchStatus;
+window.onload = refreshStatus;
 </script>
