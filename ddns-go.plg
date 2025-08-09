@@ -22,22 +22,33 @@
     <INLINE>
     <![CDATA[
 #!/bin/bash
+# 1、下载ddns-go及php相关文件
+# 1). 创建临时目录
+TMP_DIR="/tmp/ddns-go-unraid"
+rm -rf "$TMP_DIR"
+mkdir -p "$TMP_DIR"
 
-# 安装包的源目录。$(dirname $0) 代表了.plg文件在安装时所在的临时目录
-PLUGIN_SOURCE_DIR="$(dirname $0)"
-PACKAGE_DIR="$PLUGIN_SOURCE_DIR/package"
+# 2). 下载仓库并解压（只保留里面的 package/）
+curl -L https://github.com/diy97/ddns-go-unraid/archive/refs/heads/main.tar.gz \
+  | tar -xz --strip-components=1 -C "$TMP_DIR"
 
- echo "###########"
-find "$PACKAGE_DIR" -type f | while read -r file; do
-    echo "------------$file"
-done
+# 3). 定位 package 目录
+PACKAGE_DIR="$TMP_DIR/package"
 
- echo "###########"
-echo "Installing ddns-go from modular package..."
+# 4). 输出即将同步的文件
+echo "即将同步以下文件到 Unraid 系统："
+find "$PACKAGE_DIR" -type f
 
-# 1. 复制UI文件和服务脚本文件
-echo "Copying plugin files from package..."
-rsync -a "$PACKAGE_DIR/" "/"
+# 5). 同步到系统
+rsync -av "$PACKAGE_DIR/" "/"
+
+# 6). 确保启动脚本可执行
+chmod +x /etc/rc.d/rc.ddns-go
+
+# 7). 清理临时文件
+rm -rf "$TMP_DIR"
+
+echo "安装完成并已清理临时文件。"
 
 # 2. 下载 ddns-go 二进制文件
 echo "Downloading ddns-go binary..."
