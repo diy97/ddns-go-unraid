@@ -29,7 +29,7 @@ PACKAGE_DIR="$PLUGIN_SOURCE_DIR/package"
 
 
 find "$PACKAGE_DIR" -type f | while read -r file; do
-    echo "$file"
+    echo "------------$file"
 done
 
 
