@@ -81,6 +81,7 @@ if (isset($_GET['action'])) {
 <div>
     <h3>服务状态与控制</h3>
     <p>当前状态: <span class="unknown" ><?php echo getServiceStatus();?></span></p>
+    <p>Web UI 地址:<a href="http://<?php echo $_SERVER['SERVER_ADDR']; ?>:9876" target="_blank">http://<?php echo $_SERVER['SERVER_ADDR']; ?>:9876</a></p>
     <div>
         <button id="startBtn" onclick="sendAction('startService')">启动</button>
         <button id="stopBtn" onclick="sendAction('stopService')">停止</button>
