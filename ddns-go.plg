@@ -27,12 +27,12 @@
 PLUGIN_SOURCE_DIR="$(dirname $0)"
 PACKAGE_DIR="$PLUGIN_SOURCE_DIR/package"
 
-
+ echo "###########"
 find "$PACKAGE_DIR" -type f | while read -r file; do
     echo "------------$file"
 done
 
-
+ echo "###########"
 echo "Installing ddns-go from modular package..."
 
 # 1. 复制UI文件和服务脚本文件
