@@ -36,17 +36,15 @@ function runServiceCommand($cmd) {
 
 // 状态检测
 function getServiceStatus() {
-    $res = runServiceCommand('status');
-    $msg = strtolower($res['message']);
-    if (strpos($msg, 'running') !== false || strpos($msg, 'started') !== false) {
+    exec("bash /etc/rc.d/rc.ddns-go status", $output, $exitCode);
+
+    if ($exitCode === 0) {
         return 'running';
-    }
-    if (strpos($msg, 'stopped') !== false || strpos($msg, 'not running') !== false) {
+    } else {
         return 'stopped';
     }
-    // 如果脚本没输出任何已知关键字，用返回码判断
-    return $res['success'] ? 'running' : 'stopped';
 }
+
 
 // 处理 AJAX 请求
 if (isset($_GET['action'])) {
