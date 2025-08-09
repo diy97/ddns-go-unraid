@@ -3,11 +3,8 @@ Icon="ddns-go.png"
 Title="DDns-Go"
 Type="xmenu"
 Tabs="true"
-Markdown="false"
----
-
-<?php
-define('CONFIG_PATH', '/boot/config/plugins/ddns-go/.config.yaml');
+Markdown="false"<?php
+define('CONFIG_PATH', '/boot/config/plugins/ddns-go/config.yaml');
 define('LOG_PATH', '/var/log/ddns-go.log');
 define('SERVICE_SCRIPT', '/etc/rc.d/rc.ddns-go');
 
@@ -54,8 +51,12 @@ function execCommand($cmd) {
 }
 
 function getServiceStatus() {
-    list($output, $exitCode) = execCommand("bash " . SERVICE_SCRIPT . " status");
-    return ($exitCode === 0) ? 'running' : 'stopped';
+    list($output, $exitCode) = execCommand(SERVICE_SCRIPT . " status");
+    if (strpos($output, 'is running') !== false) {
+        return 'running';
+    } else {
+        return 'stopped';
+    }
 }
 
 function parseDdnsRecords() {
@@ -66,9 +67,11 @@ function parseDdnsRecords() {
 
     preg_match_all('/(?:ipv4|ipv6):\s*.*?domains:\s*$(.*?)(?=\n\S|$)/ms', $config_content, $matches, PREG_SET_ORDER);
     foreach ($matches as $match) {
+        preg_match('/(ipv4|ipv6)/i', $match[0], $type_match);
+        $type = isset($type_match[1]) ? strtoupper($type_match[1]) : 'N/A';
         preg_match_all('/-\s*([a-zA-Z0-9\.\-\_]+)/', $match[1], $domain_matches);
         foreach ($domain_matches[1] as $domain) {
-            $domains[$domain] = ['domain' => $domain, 'type' => 'N/A', 'ip' => 'N/A', 'status' => '等待检查'];
+            $domains[$domain] = ['domain' => $domain, 'type' => $type, 'ip' => 'N/A', 'status' => '等待检查'];
         }
     }
 
@@ -91,23 +94,32 @@ function parseDdnsRecords() {
     foreach ($domains as $domain => &$data) {
         foreach ($log_lines as $line) {
             if (strpos($line, $domain) !== false) {
-                if (preg_match('/Update success.*Current IP:\s*([\d\.:a-fA-F]+)/', $line, $ip_match)) {
-                    $data['status'] = '✔ 更新成功';
+                if (preg_match('/成功,\s*IP:\s*([\d\.:a-fA-F]+)/', $line, $ip_match)) {
+                    $data['status'] = ' 更新成功';
                     $data['ip'] = $ip_match[1];
                     break;
                 }
-                if (strpos($line, 'IP is up to date') !== false || strpos($line, 'no change') !== false) {
+                if (strpos($line, '无需更新') !== false || strpos($line, '未改变') !== false) {
                     $data['status'] = '- 无需更新';
                     foreach ($log_lines as $prev_line) {
-                        if (strpos($prev_line, $domain) !== false && preg_match('/Current IP:\s*([\d\.:a-fA-F]+)/', $prev_line, $ip_match2)) {
+                        if (strpos($prev_line, $domain) !== false && preg_match('/IP:\s*([\d\.:a-fA-F]+)/', $prev_line, $ip_match2)) {
                             $data['ip'] = $ip_match2[1];
                             break;
                         }
                     }
+                    if ($data['ip'] === 'N/A') {
+                        // Try to find acquired IP
+                        foreach ($log_lines as $prev_line) {
+                            if (preg_match('/获取到的IPv[46]:\s*([\d\.:a-fA-F]+)/', $prev_line, $ip_match2)) {
+                                $data['ip'] = $ip_match2[1];
+                                break;
+                            }
+                        }
+                    }
                     break;
                 }
-                if (strpos(strtolower($line), 'failed') !== false || strpos(strtolower($line), 'error') !== false) {
-                    $data['status'] = '❌ 更新失败';
+                if (strpos($line, '失败') !== false || strpos($line, '错误') !== false) {
+                    $data['status'] = ' 更新失败';
                     $data['ip'] = 'Error';
                     break;
                 }
@@ -146,9 +158,9 @@ function parseDdnsRecords() {
         </tr>
         <tr><td>操作:</td>
             <td>
-                <button id="btn-start" disabled>🟢 启动</button>
-                <button id="btn-stop" disabled>🔴 停止</button>
-                <button id="btn-restart" disabled>🔄 重启</button>
+                <button id="btn-start" disabled> 启动</button>
+                <button id="btn-stop" disabled> 停止</button>
+                <button id="btn-restart" disabled> 重启</button>
             </td>
         </tr>
     </table>
@@ -156,7 +168,7 @@ function parseDdnsRecords() {
 
 <div class="unraid-card">
     <h3>DNS 记录状态
-        <button id="btn-refresh" style="float: right; font-size: 12px; padding: 6px 10px;">🔄 刷新</button>
+        <button id="btn-refresh" style="float: right; font-size: 12px; padding: 6px 10px;"> 刷新</button>
     </h3>
     <div id="records-container"><span class="spinner"></span> 加载记录...</div>
 </div>
@@ -177,7 +189,7 @@ $(function(){
         $('#btn-start,#btn-stop,#btn-restart,#btn-refresh').prop('disabled', true);
         $('#service-status').html('<span class="spinner"></span> 正在发送命令...');
         $.ajax({
-            url: window.location.href,
+            url: window.location.pathname,
             dataType: 'json',
             data: { action: action },
             success: function(res){
@@ -199,17 +211,17 @@ $(function(){
         $('#records-container').html('<span class="spinner"></span> 加载记录...');
         $('#service-status').html('<span class="spinner"></span> 检测中...');
         $.ajax({
-            url: window.location.href,
+            url: window.location.pathname,
             dataType: 'json',
             data: { action: 'getStatus' },
             success: function(res){
                 if(res.success){
                     if(res.status === 'running'){
-                        $('#service-status').html('<span class="status-running">🟢 运行中</span>');
+                        $('#service-status').html('<span class="status-running"> 运行中</span>');
                         $('#btn-start').prop('disabled', true);
                         $('#btn-stop,#btn-restart').prop('disabled', false);
                     } else {
-                        $('#service-status').html('<span class="status-stopped">🔴 已停止</span>');
+                        $('#service-status').html('<span class="status-stopped"> 已停止</span>');
                         $('#btn-start').prop('disabled', false);
                         $('#btn-stop,#btn-restart').prop('disabled', true);
                     }
@@ -242,3 +254,4 @@ $(function(){
     }
 });
 </script>
+
