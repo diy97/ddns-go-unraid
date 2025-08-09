@@ -140,7 +140,7 @@ if (isset($_GET['action'])) {
     .status-ok { color: #8BC34A; }
     .status-nochange { color: #9E9E9E; }
     .status-error { color: #F44336; }
-    button { cursor: pointer; padding: 8px 12px; border-radius: 4px; border: 1px solid #636363; color: #FFF; margin-right: 10px; }
+    button { cursor: pointer; padding: 8px 12px; border-radius: 4px; border: 1px solid #636363; margin-right: 10px; }
     button:disabled { cursor: not-allowed; background-color: #444; color: #888; }
     #records-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
     #records-table th, #records-table td { padding: 8px; border: 1px solid #4D4D4D; text-align: left; }
