@@ -7,133 +7,247 @@ Markdown="false"
 ---
 
 <?php
-// 统一返回 JSON
-function sendResponse($success, $message, $status = null) {
+// =============================================================================
+// ddns-go Plugin Settings Page
+// 路径: /usr/local/emhttp/plugins/ddns-go/settings.php
+// =============================================================================
+
+define('CONFIG_PATH', '/boot/config/plugins/ddns-go/.config.yaml');
+define('LOG_PATH', '/var/log/ddns-go.log');
+define('SERVICE_SCRIPT', '/etc/rc.d/rc.ddns-go');
+
+if (isset($_GET['action'])) {
     header('Content-Type: application/json');
-    echo json_encode([
-        'success' => $success,
-        'message' => $message,
-        'status'  => $status
-    ]);
+    $response = ['success' => false, 'message' => 'Unknown action.'];
+
+    switch ($_GET['action']) {
+        case 'getStatus':
+            $status = getServiceStatus();
+            $records = parseDdnsRecords();
+            $response = ['success' => true, 'status' => $status, 'records' => $records];
+            break;
+        case 'startService':
+            exec(SERVICE_SCRIPT . ' start > /dev/null 2>&1 &');
+            $response = ['success' => true, 'message' => 'Start command sent.'];
+            break;
+        case 'stopService':
+            exec(SERVICE_SCRIPT . ' stop > /dev/null 2>&1 &');
+            $response = ['success' => true, 'message' => 'Stop command sent.'];
+            break;
+        case 'restartService':
+            exec(SERVICE_SCRIPT . ' stop > /dev/null 2>&1 &');
+            sleep(1);
+            exec(SERVICE_SCRIPT . ' start > /dev/null 2>&1 &');
+            $response = ['success' => true, 'message' => 'Restart command sent.'];
+            break;
+    }
+    echo json_encode($response);
     exit;
 }
 
-// 执行 rc.ddns-go 命令
-function runServiceCommand($cmd) {
-    $script = '/etc/rc.d/rc.ddns-go';
-    if (!file_exists($script)) {
-        return ['success' => false, 'message' => "服务脚本不存在: $script"];
-    }
-    $output = [];
-    $ret = 1;
-    exec("/bin/bash $script $cmd 2>&1", $output, $ret);
-    return [
-        'success' => ($ret === 0),
-        'message' => implode("\n", $output),
-        'ret'     => $ret
-    ];
-}
-
-// 状态检测
+/**
+ * 返回服务运行状态：'running' or 'stopped'
+ * 仅通过脚本退出码判断，0表示运行中，非0表示停止
+ */
 function getServiceStatus() {
-    exec("bash /etc/rc.d/rc.ddns-go status", $output, $exitCode);
-
-    if ($exitCode === 0) {
-        return 'running';
-    } else {
-        return 'stopped';
-    }
+    exec("bash " . SERVICE_SCRIPT . " status", $output, $exitCode);
+    return ($exitCode === 0) ? 'running' : 'stopped';
 }
 
+/**
+ * 简单解析配置文件并结合日志判断每个域名的状态。
+ * 如果你的 .config.yaml 结构不同，可按需修改解析逻辑。
+ */
+function parseDdnsRecords() {
+    if (!file_exists(CONFIG_PATH)) return [];
 
-// 处理 AJAX 请求
-if (isset($_GET['action'])) {
-    switch ($_GET['action']) {
-        case 'statusService':
-            $status = getServiceStatus();
-            sendResponse(true, "状态检测完成", $status);
-        case 'startService':
-            $res = runServiceCommand('start');
-            sendResponse($res['success'], $res['message'], getServiceStatus());
-        case 'stopService':
-            $res = runServiceCommand('stop');
-            sendResponse($res['success'], $res['message'], getServiceStatus());
-        case 'restartService':
-            $res = runServiceCommand('restart');
-            sendResponse($res['success'], $res['message'], getServiceStatus());
-        default:
-            sendResponse(false, "未知操作: " . $_GET['action']);
+    $domains = [];
+    $config_content = file_get_contents(CONFIG_PATH);
+
+    // 解析 ipv4/ipv6 中的 domains 列表（基于常见的 YAML 排版）
+    preg_match_all('/(?:ipv4|ipv6):\s*.*?domains:\s*$(.*?)(?=\n\S|$)/ms', $config_content, $matches, PREG_SET_ORDER);
+    foreach ($matches as $match) {
+        preg_match_all('/-\s*([a-zA-Z0-9\.\-\_]+)/', $match[1], $domain_matches);
+        foreach ($domain_matches[1] as $domain) {
+            $domains[$domain] = ['domain' => $domain, 'type' => 'N/A', 'ip' => 'N/A', 'status' => '等待检查'];
+        }
     }
+
+    // fallback 方式
+    if (empty($domains)) {
+        preg_match_all('/-\s*([a-zA-Z0-9\.\-\_]+\.[a-zA-Z]{2,})/', $config_content, $fallback);
+        if (!empty($fallback[1])) {
+            foreach ($fallback[1] as $d) {
+                $domains[$d] = ['domain' => $d, 'type' => 'N/A', 'ip' => 'N/A', 'status' => '等待检查'];
+            }
+        }
+    }
+
+    if (!file_exists(LOG_PATH)) return array_values($domains);
+
+    // 读取最近200条日志
+    $log_lines = file(LOG_PATH, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if ($log_lines === false) return array_values($domains);
+    $log_lines = array_slice($log_lines, -200);
+    $log_lines = array_reverse($log_lines);
+
+    foreach ($domains as $domain => &$data) {
+        foreach ($log_lines as $line) {
+            if (strpos($line, $domain) !== false) {
+                if (preg_match('/Update success.*Current IP:\s*([\d\.:a-fA-F]+)/', $line, $ip_match)) {
+                    $data['status'] = '✔ 更新成功';
+                    $data['ip'] = $ip_match[1];
+                    break;
+                }
+                if (strpos($line, 'IP is up to date') !== false || strpos($line, 'no change') !== false) {
+                    $data['status'] = '- 无需更新';
+                    // 尝试找之前的 IP
+                    foreach ($log_lines as $prev_line) {
+                        if (strpos($prev_line, $domain) !== false && preg_match('/Current IP:\s*([\d\.:a-fA-F]+)/', $prev_line, $ip_match2)) {
+                            $data['ip'] = $ip_match2[1];
+                            break;
+                        }
+                    }
+                    break;
+                }
+                if (strpos(strtolower($line), 'failed') !== false || strpos(strtolower($line), 'error') !== false) {
+                    $data['status'] = '❌ 更新失败';
+                    $data['ip'] = 'Error';
+                    break;
+                }
+            }
+        }
+    }
+    unset($data);
+    return array_values($domains);
 }
 ?>
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>ddns-go 控制面板</title>
+    <script src="/webGui/javascript/jquery.min.js"></script>
+    <style>
+        body{font-family: Arial, Helvetica, "Microsoft YaHei", sans-serif; color:#E0E0E0; background:#2b2b2b}
+        .unraid-card { margin: 18px; padding: 18px; border: 1px solid #4D4D4D; background-color: #313131; border-radius: 6px; }
+        .unraid-card h3 { margin-top: 0; color: #FFF; }
+        .info-table { width: 100%; } .info-table td { padding: 6px; vertical-align: middle; }
+        .info-table td:first-child { font-weight: bold; width: 160px; color:#d0d0d0; }
+        .status-running { color: #8BC34A; } .status-stopped { color: #F44336; }
+        .status-ok { color: #8BC34A; } .status-nochange { color: #9E9E9E; } .status-error { color: #F44336; }
+        button { cursor: pointer; padding: 8px 12px; border-radius: 4px; border: 1px solid #636363; background-color: #555; color: #FFF; }
+        button:disabled { cursor: not-allowed; background-color: #444; color: #888; }
+        #records-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        #records-table th, #records-table td { padding: 8px; border: 1px solid #4D4D4D; text-align: left; } #records-table th { background-color: #404040; }
+        .spinner { display: inline-block; border: 3px solid #3a3a3a; border-top: 3px solid #9aa7ff; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; vertical-align: middle; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+<div class="unraid-card">
+    <h3>服务状态与控制</h3>
+    <table class="info-table">
+        <tr><td>当前状态:</td><td><span id="service-status"><span class="spinner"></span> 检测中...</span></td></tr>
+        <tr><td>Web UI 地址:</td>
+            <td>
+                <a id="webui-link" href="#" target="_blank">http://(server):9876</a>
+            </td>
+        </tr>
+        <tr><td>操作:</td>
+            <td>
+                <button id="btn-start" disabled>🟢 启动</button>
+                <button id="btn-stop" disabled>🔴 停止</button>
+                <button id="btn-restart" disabled>🔄 重启</button>
+            </td>
+        </tr>
+    </table>
+</div>
 
-<style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    #status { font-weight: bold; }
-    button { padding: 5px 10px; margin-right: 10px; }
-    .running { color: green; }
-    .stopped { color: red; }
-    .unknown { color: gray; }
-</style>
-
-
-<h2>DDns-go 服务管理</h2>
-<p id="status" class="unknown">当前状态:  <?php echo getServiceStatus();?></p>
-
-<button id="startBtn" onclick="sendAction('startService')">启动</button>
-<button id="stopBtn" onclick="sendAction('stopService')">停止</button>
-<button id="restartBtn" onclick="sendAction('restartService')">重启</button>
-<button onclick="refreshStatus()">刷新状态</button>
+<div class="unraid-card">
+    <h3>DNS 记录状态
+        <button id="btn-refresh" style="float: right; font-size: 12px; padding: 6px 10px;">🔄 刷新</button>
+    </h3>
+    <div id="records-container"><span class="spinner"></span> 加载记录...</div>
+</div>
 
 <script>
-function refreshStatus() {
-    fetch('?action=statusService')
-        .then(res => res.json())
-        .then(data => {
-            let statusEl = document.getElementById('status');
-            let startBtn = document.getElementById('startBtn');
-            let stopBtn = document.getElementById('stopBtn');
-            let restartBtn = document.getElementById('restartBtn');
+$(function(){
+    // 更新 Web UI 链接（使用当前主机名）
+    var host = window.location.hostname || '<?php echo $_SERVER['SERVER_NAME']; ?>';
+    $('#webui-link').attr('href', 'http://' + host + ':9876').text('http://' + host + ':9876');
 
-            if (data.success) {
-                statusEl.innerText = '当前状态: ' + data.status;
-                statusEl.className = data.status === 'running' ? 'running' :
-                                     data.status === 'stopped' ? 'stopped' : 'unknown';
+    $('#btn-start').click(function(){ sendCommand('startService'); });
+    $('#btn-stop').click(function(){ sendCommand('stopService'); });
+    $('#btn-restart').click(function(){ sendCommand('restartService'); });
+    $('#btn-refresh').click(updateStatus);
 
-                if (data.status === 'running') {
-                    startBtn.disabled = true;
-                    stopBtn.disabled = false;
-                    restartBtn.disabled = false;
-                } else {
-                    startBtn.disabled = false;
-                    stopBtn.disabled = true;
-                    restartBtn.disabled = true;
-                }
-            } else {
-                statusEl.innerText = '状态获取失败: ' + (data.message || '');
-                statusEl.className = 'unknown';
-                startBtn.disabled = false;
-                stopBtn.disabled = true;
-                restartBtn.disabled = true;
+    updateStatus();
+
+    function sendCommand(action){
+        $('#btn-start,#btn-stop,#btn-restart,#btn-refresh').prop('disabled', true);
+        $('#service-status').html('<span class="spinner"></span> 正在发送命令...');
+        $.ajax({
+            url: window.location.href,
+            dataType: 'json',
+            data: { action: action },
+            success: function(){
+                setTimeout(updateStatus, 1500);
+            },
+            error: function(){
+                $('#service-status').html('<span class="status-error">命令发送失败</span>');
+                setTimeout(updateStatus, 1500);
             }
-        })
-        .catch(err => {
-            console.error(err);
         });
-}
+    }
 
-function sendAction(action) {
-    fetch('?action=' + action)
-        .then(res => res.json())
-        .then(data => {
-            alert(data.message || (data.success ? '操作成功' : '操作失败'));
-            refreshStatus();
-        })
-        .catch(err => {
-            console.error(err);
+    function updateStatus(){
+        $('#btn-start,#btn-stop,#btn-restart,#btn-refresh').prop('disabled', true);
+        $('#records-container').html('<span class="spinner"></span> 加载记录...');
+        $('#service-status').html('<span class="spinner"></span> 检测中...');
+        $.ajax({
+            url: window.location.href,
+            dataType: 'json',
+            data: { action: 'getStatus' },
+            success: function(res){
+                if(res.success){
+                    if(res.status === 'running'){
+                        $('#service-status').html('<span class="status-running">🟢 运行中</span>');
+                        $('#btn-start').prop('disabled', true);
+                        $('#btn-stop,#btn-restart').prop('disabled', false);
+                    } else {
+                        $('#service-status').html('<span class="status-stopped">🔴 已停止</span>');
+                        $('#btn-start').prop('disabled', false);
+                        $('#btn-stop,#btn-restart').prop('disabled', true);
+                    }
+
+                    var html = '<table id="records-table"><thead><tr><th>域名</th><th>类型</th><th>当前解析 IP</th><th>状态</th></tr></thead><tbody>';
+                    if(res.records && res.records.length){
+                        res.records.forEach(function(r){
+                            var cls = r.status.indexOf('成功') !== -1 ? 'status-ok' : (r.status.indexOf('无需') !== -1 ? 'status-nochange' : (r.status.indexOf('失败') !== -1 ? 'status-error' : ''));
+                            html += '<tr><td>'+r.domain+'</td><td>'+ (r.type || '-') +'</td><td>'+ (r.ip || '-') +'</td><td class="'+cls+'">'+r.status+'</td></tr>';
+                        });
+                    } else {
+                        html += '<tr><td colspan="4">未找到配置或未配置域名。</td></tr>';
+                    }
+                    html += '</tbody></table>';
+                    $('#records-container').html(html);
+                } else {
+                    $('#service-status').html('<span class="status-error">获取状态失败</span>');
+                    $('#records-container').html('<div class="status-error">无法读取状态。</div>');
+                }
+            },
+            error: function(){
+                $('#service-status').html('<span class="status-error">请求错误</span>');
+                $('#records-container').html('<div class="status-error">请求失败，请检查网络。</div>');
+            },
+            complete: function(){
+                $('#btn-refresh').prop('disabled', false);
+            }
         });
-}
-
-window.onload = refreshStatus;
+    }
+});
 </script>
+</body>
+</html>
 
