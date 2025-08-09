@@ -1,44 +1,47 @@
 <?xml version='1.0' standalone='yes'?>
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "ddns-go">
-<!ENTITY author    "diy97/ddns-go-unraid">
-<!ENTITY version   "2025.08.09"> 
-<!ENTITY branch     "master">
-<!ENTITY pluginURL  "https://raw.githubusercontent.com/&github;/&branch;/ddns-go.plg">
+<!ENTITY author    "diy97">
+<!ENTITY version   "2025.08.08">
+<!ENTITY github    "diy97/ddns-go-unraid">
+<!ENTITY branch    "master">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/&branch;/ddns-go.plg">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;" min="7.0.0" settings="plugins/ddns-go/settings.php">
 
   <DESCRIPTION>
-    A lightweight DDNS client for Unraid. Modular installation.
+    A lightweight DDNS client for Unraid. Includes a settings page for service control and status monitoring. Modular installation.
   </DESCRIPTION>
+
+  <CHANGELOG>
+    2025.08.08 - Final modular version with separate UI and runtime files.
+  </CHANGELOG>
 
   <FILE Run="/bin/bash">
     <INLINE>
     <![CDATA[
 #!/bin/bash
 
-# 安装包的源目录。Unraid安装插件时, 会将整个包下载到临时目录,
-# $(dirname $0) 就代表了.plg文件所在的那个临时目录。
+# 安装包的源目录。$(dirname $0) 代表了.plg文件在安装时所在的临时目录
 PLUGIN_SOURCE_DIR="$(dirname $0)"
 PACKAGE_DIR="$PLUGIN_SOURCE_DIR/package"
 
 echo "Installing ddns-go from modular package..."
 
 # 1. 复制UI文件和服务脚本文件
-# 使用 rsync 可以更好地处理目录和权限
-echo "Copying plugin files..."
+echo "Copying plugin files from package..."
 rsync -a "$PACKAGE_DIR/" "/"
 
-# 2. 下载 ddns-go 二进制文件 (这部分逻辑不变)
+# 2. 下载 ddns-go 二进制文件
 echo "Downloading ddns-go binary..."
-DDNS_GO_URL="https.github.com/jeessy2/ddns-go/releases/download/v6.12.1/ddns-go_6.12.1_linux_x86_64.tar.gz"
+DDNS_GO_URL="https://github.com/jeessy2/ddns-go/releases/download/v6.12.1/ddns-go_6.12.1_linux_x86_64.tar.gz"
 TEMP_DIR="/tmp/ddns-go-install"
 BIN_DIR="/usr/local/bin"
 mkdir -p "$TEMP_DIR"
 wget --user-agent="Mozilla/5.0" -qO "$TEMP_DIR/ddns-go.tar.gz" "$DDNS_GO_URL"
 if [ $? -ne 0 ]; then
-  echo "Error: Failed to download ddns-go binary."
+  echo "Error: Failed to download ddns-go binary. Please check your Unraid server's network and DNS settings."
   exit 1
 fi
 tar -xzf "$TEMP_DIR/ddns-go.tar.gz" -C "$TEMP_DIR"
@@ -46,7 +49,7 @@ mv "$TEMP_DIR/ddns-go" "$BIN_DIR/ddns-go"
 chmod +x "$BIN_DIR/ddns-go"
 rm -rf "$TEMP_DIR"
 
-# 3. 设置权限和服务 (这部分逻辑不变)
+# 3. 设置权限和服务
 SERVICE_FILE="/etc/rc.d/rc.ddns-go"
 chmod +x "$SERVICE_FILE"
 grep -q "$SERVICE_FILE start" /boot/config/go || echo "$SERVICE_FILE start" >> /boot/config/go
@@ -74,5 +77,4 @@ echo "ddns-go uninstalled."
     ]]>
     </INLINE>
   </FILE>
-
 </PLUGIN>
