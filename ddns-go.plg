@@ -27,7 +27,7 @@
 PLUGIN_SOURCE_DIR="$(dirname $0)"
 PACKAGE_DIR="$PLUGIN_SOURCE_DIR/package"
 
-echo "Installing ddns-go from modular package..."
+echo "Installing ddns-go from modular package...$PLUGIN_SOURCE_DIR"
 
 # 1. 复制UI文件和服务脚本文件
 echo "Copying plugin files from package..."
