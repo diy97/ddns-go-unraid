@@ -113,7 +113,7 @@ function parseDdnsRecords() {
     <h3>服务状态与控制</h3>
     <table class="info-table">
         <tr><td>当前状态:</td><td><span id="service-status"><div class="spinner"></div> 正在加载...</span></td></tr>
-        <tr><td>Web UI 地址:</td><td><a href="http://<?php echo $_SERVER['SERVER_NAME']; ?>:9876" target="_blank">http://<?php echo $_SERVER['SERVER_NAME']; ?>:9876</a></td></tr>
+        <tr><td>Web UI 地址:</td><td><a href="http://<?php echo $_SERVER['SERVER_ADDR']; ?>:9876" target="_blank">http://<?php echo $_SERVER['SERVER_ADDR']; ?>:9876</a></td></tr>
         <tr><td>操作:</td><td><button id="btn-start" disabled>🟢 启动</button> <button id="btn-stop" disabled>🔴 停止</button> <button id="btn-restart" disabled>🔄 重启</button></td></tr>
     </table>
 </div>
