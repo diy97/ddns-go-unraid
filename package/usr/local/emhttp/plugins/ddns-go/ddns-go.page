@@ -85,23 +85,18 @@ if (isset($_GET['action'])) {
     #records-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
     #records-table th, #records-table td { padding: 8px; border: 1px solid #4D4D4D; text-align: left; }
     #records-table th { background-color: #404040; }
-    .spinner { display: inline-block; border: 3px solid #3a3a3a; border-top: 3px solid #9aa7ff; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; vertical-align: middle; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-button { margin-right: 10px; padding: 8px 12px; background: #444; color: #eee; border: none; border-radius: 4px; cursor: pointer; }
-button:disabled { background: #666; cursor: not-allowed; }
-#status { margin-bottom: 20px; font-weight: bold; }
-.status-running { color: #4CAF50; }
-.status-stopped { color: #F44336; }
+
 </style>
 
 
 <div class="unraid-card">
     <h3>服务状态与控制</h3>
-    <p>当前状态: <span id="service-status" class="spinner"><?php echo getServiceStatus();?></span></p>
+    <p>当前状态: <span id="service-status" ><?php echo getServiceStatus();?></span></p>
     <div>
-        <button id="btn-start" disabled onclick="sendAction('startService')">🟢 启动</button>
-        <button id="btn-stop" disabled  onclick="sendAction('stopService')">🔴 停止</button>
-        <button id="btn-restart" disabled onclick="sendAction('restartService')" >🔄 重启</button>
+        <button id="btn-start"  onclick="sendAction('startService')">🟢 启动</button>
+        <button id="btn-stop"  onclick="sendAction('stopService')">🔴 停止</button>
+        <button id="btn-restart"  onclick="sendAction('restartService')" >🔄 重启</button>
         <button id="btn-refresh" onclick="refreshStatus()">🔄 刷新状态</button>
     </div>
 </div>
