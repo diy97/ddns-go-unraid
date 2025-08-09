@@ -4,6 +4,9 @@ Title="DDns-Go"
 Type="xmenu"
 Tabs="true"
 Markdown="false"
+---
+
+
 <?php
 define('CONFIG_PATH', '/boot/config/plugins/ddns-go/config.yaml');
 define('LOG_PATH', '/var/log/ddns-go.log');
