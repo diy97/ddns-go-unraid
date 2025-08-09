@@ -1,8 +1,11 @@
 <?xml version='1.0' standalone='yes'?>
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "ddns-go">
-<!ENTITY author    "diy97 / Gemini">
-<!ENTITY version   "2025.08.09"> <!ENTITY pluginURL "URL_TO_YOUR_RAW_PLG_FILE_ON_GITHUB"> ]>
+<!ENTITY author    "diy97/ddns-go-unraid">
+<!ENTITY version   "2025.08.09"> 
+<!ENTITY branch     "master">
+<!ENTITY pluginURL  "https://raw.githubusercontent.com/&github;/&branch;/ddns-go.plg">
+]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;" min="7.0.0" settings="plugins/ddns-go/settings.php">
 
