@@ -139,7 +139,7 @@ function parseDdnsRecords() {
 <style>
     .unraid-card { margin: 18px; padding: 18px; border: 1px solid #4D4D4D; background-color: #313131; border-radius: 6px; }
     .unraid-card h3 { margin-top: 0; color: #FFF; }
-    .info-table { width: 100%; } .info-table td { padding: 6px; vertical-align: middle; }
+    .info-table { width: 100%; } .info-table td { padding: 5%,; vertical-align: middle; }
     .info-table td:first-child { font-weight: bold; width: 160px; color:#d0d0d0; }
     .status-running { color: #8BC34A; } .status-stopped { color: #F44336; }
     .status-ok { color: #8BC34A; } .status-nochange { color: #9E9E9E; } .status-error { color: #F44336; }
