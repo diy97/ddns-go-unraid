@@ -7,126 +7,86 @@ Markdown="false"
 ---
 
 <?php
-// 统一返回 JSON
-function sendResponse($success, $message, $status = null) {
+if (!headers_sent()) {
     header('Content-Type: application/json');
-    echo json_encode([
+}
+
+function sendResponse($success, $message, $status = null) {
+    $response = [
         'success' => $success,
         'message' => $message,
         'status'  => $status
-    ]);
+    ];
+    if (ob_get_level() > 0) ob_clean();
+    echo json_encode($response);
     exit;
 }
 
-// 检查服务脚本是否存在
 function checkServiceScript() {
     if (!file_exists('/etc/rc.d/rc.ddns-go')) {
         sendResponse(false, "DDNS-Go 服务脚本不存在");
     }
 }
 
-// 执行 rc.ddns-go 命令
 function runServiceCommand($cmd) {
     checkServiceScript();
     $output = [];
     $ret = 1;
-    exec("/bin/bash /etc/rc.d/rc.ddns-go $cmd 2>&1", $output, $ret);
+    exec("/bin/bash /etc/rc.d/rc.ddns-go " . escapeshellarg($cmd) . " 2>&1", $output, $ret);
     return [
         'success' => ($ret === 0),
-        'message' => implode("\n", $output),
-        'ret'     => $ret
+        'message' => implode("\n", $output)
     ];
 }
 
-// 改进的状态检测 - 直接检查进程
 function getServiceStatus() {
-    exec("pgrep -f 'ddns-go'", $output, $ret);
+    exec("pidof ddns-go", $output, $ret);
     return ($ret === 0) ? 'running' : 'stopped';
 }
 
-// 处理 AJAX 请求
-if (isset($_GET['action'])) {
-    switch ($_GET['action']) {
-        case 'statusService':
-            sendResponse(true, "状态检测完成", getServiceStatus());
-        case 'startService':
-            $res = runServiceCommand('start');
-            sendResponse($res['success'], $res['message'], 'running'); // 强制返回预期状态
-        case 'stopService':
-            $res = runServiceCommand('stop');
-            sendResponse($res['success'], $res['message'], 'stopped'); // 强制返回预期状态
-        case 'restartService':
-            $res = runServiceCommand('restart');
-            sendResponse($res['success'], $res['message'], 'running'); // 强制返回预期状态
-        default:
-            sendResponse(false, "未知操作: " . $_GET['action']);
+if (isset($_GET['action']) && !empty($_GET['action'])) {
+    try {
+        switch ($_GET['action']) {
+            case 'statusService':
+                sendResponse(true, "状态检测完成", getServiceStatus());
+                break;
+            case 'startService':
+                $res = runServiceCommand('start');
+                sendResponse($res['success'], $res['message'], getServiceStatus());
+                break;
+            case 'stopService':
+                $res = runServiceCommand('stop');
+                sendResponse($res['success'], $res['message'], getServiceStatus());
+                break;
+            case 'restartService':
+                $res = runServiceCommand('restart');
+                sendResponse($res['success'], $res['message'], getServiceStatus());
+                break;
+            default:
+                sendResponse(false, "未知操作: " . $_GET['action']);
+        }
+    } catch (Exception $e) {
+        sendResponse(false, "操作异常: " . $e->getMessage());
     }
 }
 
-// 获取初始状态用于页面加载
 $currentStatus = getServiceStatus();
+$serverIP = $_SERVER['HTTP_HOST'] ?? getHostByName(getHostName());
+if (strpos($serverIP, ':') !== false) { // IPv6
+    $serverIP = "[$serverIP]";
+}
 ?>
 
 <script src="/jquery.min.js"></script>
 <style>
-    .status-indicator { 
-        font-weight: bold;
-        transition: all 0.3s ease;
-    }
+    .status-indicator { font-weight: bold; transition: all 0.3s ease; }
     .status-running { color: green; }
     .status-stopped { color: red; }
-    .status-changing {
-        animation: pulse 1s infinite;
-    }
-    @keyframes pulse {
-        0% { opacity: 1; }
-        50% { opacity: 0.5; }
-        100% { opacity: 1; }
-    }
-    #controls button { 
-        padding: 8px 15px;
-        margin-right: 10px;
-        min-width: 80px;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-    #controls button:hover {
-        transform: translateY(-2px);
-    }
-    #controls button:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-        transform: none;
-    }
-    .loading .btn-text {
-        display: none;
-    }
-    .loading::after {
-        content: "";
-        display: inline-block;
-        width: 16px;
-        height: 16px;
-        border: 2px solid #ccc;
-        border-top-color: #333;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-    }
-    @keyframes spin {
-        to { transform: rotate(360deg); }
-    }
-    .toast {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        padding: 12px 18px;
-        background: #333;
-        color: white;
-        border-radius: 4px;
-        opacity: 0;
-        transition: opacity 0.3s;
-        z-index: 1000;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-    }
+    .status-changing { animation: pulse 1s infinite; }
+    @keyframes pulse { 0% {opacity: 1;} 50% {opacity: 0.5;} 100% {opacity: 1;} }
+    #controls button { padding: 8px 15px; margin-right: 10px; min-width: 80px; cursor: pointer; }
+    #controls button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .toast { position: fixed; top: 20px; right: 20px; padding: 12px 18px; background: #333; color: white; border-radius: 4px; opacity: 0; transition: opacity 0.3s; z-index: 1000; }
     .toast.show { opacity: 1; }
     .toast.error { background: #d32f2f; }
 </style>
@@ -140,163 +100,82 @@ $currentStatus = getServiceStatus();
         </span>
     </div>
     <p class="webui-link">Web 管理界面: 
-        <a href="http://<?php echo $_SERVER['SERVER_ADDR']; ?>:9876" target="_blank">
-            http://<?php echo $_SERVER['SERVER_ADDR']; ?>:9876
+        <a href="http://<?php echo $serverIP; ?>:9876" target="_blank">
+            http://<?php echo $serverIP; ?>:9876
         </a>
     </p>
     
     <div id="controls">
-        <button id="startBtn" <?php echo $currentStatus === 'running' ? 'disabled' : ''; ?>>
-            <span class="btn-text">启动</span>
-        </button>
-        <button id="stopBtn" <?php echo $currentStatus === 'stopped' ? 'disabled' : ''; ?>>
-            <span class="btn-text">停止</span>
-        </button>
-        <button id="restartBtn" <?php echo $currentStatus === 'stopped' ? 'disabled' : ''; ?>>
-            <span class="btn-text">重启</span>
-        </button>
-        <button id="refreshBtn">
-            <span class="btn-text">刷新状态</span>
-        </button>
+        <button id="startBtn" <?php echo $currentStatus === 'running' ? 'disabled' : ''; ?>>启动</button>
+        <button id="stopBtn" <?php echo $currentStatus === 'stopped' ? 'disabled' : ''; ?>>停止</button>
+        <button id="restartBtn" <?php echo $currentStatus === 'stopped' ? 'disabled' : ''; ?>>重启</button>
+        <button id="refreshBtn">刷新状态</button>
     </div>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script>
-// UI元素缓存
 const elements = {
     status: document.getElementById('statusDisplay'),
-    controls: document.getElementById('controls'),
-    toast: document.getElementById('toast'),
     buttons: {
         start: document.getElementById('startBtn'),
         stop: document.getElementById('stopBtn'),
         restart: document.getElementById('restartBtn'),
         refresh: document.getElementById('refreshBtn')
-    }
+    },
+    toast: document.getElementById('toast')
 };
 
-// 显示Toast提示
 function showToast(message, type = 'success') {
     elements.toast.textContent = message;
     elements.toast.className = `toast ${type}`;
     elements.toast.classList.add('show');
-    
-    setTimeout(() => {
-        elements.toast.classList.remove('show');
-    }, 3000);
+    setTimeout(() => elements.toast.classList.remove('show'), 3000);
 }
 
-// 立即更新UI状态
-function updateStatusImmediately(newStatus) {
-    console.log('立即更新状态为:', newStatus);
-    
-    // 更新状态显示
+async function fetchJSON(url) {
+    const response = await fetch(url);
+    const text = await response.text();
+    try { return JSON.parse(text); } 
+    catch { throw new Error('服务器返回了无效的响应'); }
+}
+
+function updateStatus(newStatus) {
     elements.status.textContent = newStatus;
-    elements.status.className = `status-indicator status-${newStatus} status-changing`;
-    
-    // 更新按钮状态
+    elements.status.className = `status-indicator status-${newStatus}`;
     elements.buttons.start.disabled = newStatus === 'running';
     elements.buttons.stop.disabled = newStatus === 'stopped';
     elements.buttons.restart.disabled = newStatus === 'stopped';
 }
 
-// 最终确认状态
-async function confirmStatus() {
-    try {
-        const response = await fetch('?action=statusService');
-        if (!response.ok) throw new Error('状态请求失败');
-        
-        const data = await response.json();
-        if (!data.success) throw new Error(data.message || '状态获取失败');
-        
-        console.log('确认实际状态为:', data.status);
-        elements.status.textContent = data.status;
-        elements.status.className = `status-indicator status-${data.status}`;
-    } catch (error) {
-        console.error('状态确认错误:', error);
-        showToast('状态确认失败: ' + error.message, 'error');
-    }
-}
-
-// 设置按钮加载状态
-function setButtonLoading(button, isLoading) {
-    if (isLoading) {
-        button.classList.add('loading');
-        button.disabled = true;
-    } else {
-        button.classList.remove('loading');
-        // 根据当前状态重新设置disabled
-        const currentStatus = elements.status.textContent;
-        if (button === elements.buttons.start) {
-            button.disabled = currentStatus === 'running';
-        } else if (button === elements.buttons.stop) {
-            button.disabled = currentStatus === 'stopped';
-        } else if (button === elements.buttons.restart) {
-            button.disabled = currentStatus === 'stopped';
-        }
-    }
-}
-
-// 执行服务操作
-async function performServiceAction(action, button) {
-    const expectedStatus = action === 'stopService' ? 'stopped' : 'running';
-    
-    try {
-        // 1. 立即更新UI为预期状态
-        updateStatusImmediately(expectedStatus);
-        setButtonLoading(button, true);
-        
-        // 2. 发送请求执行操作
-        const response = await fetch(`?action=${action}`);
-        if (!response.ok) throw new Error('请求失败');
-        
-        const data = await response.json();
-        if (!data.success) throw new Error(data.message || '操作失败');
-        
-        showToast(data.message || '操作成功');
-        
-        // 3. 操作成功后确认实际状态
-        await confirmStatus();
-    } catch (error) {
-        console.error('操作错误:', error);
-        showToast(error.message || '操作失败', 'error');
-        
-        // 出错后重新获取实际状态
-        await confirmStatus();
-    } finally {
-        setButtonLoading(button, false);
-    }
-}
-
 // 刷新状态
-async function refreshStatus() {
+async function fetchStatus() {
+    const data = await fetchJSON('?action=statusService&_=' + Date.now());
+    if (data.success) updateStatus(data.status);
+}
+
+// 操作服务
+async function performServiceAction(action, expectedStatus) {
+    // 点击后立即显示变化
+    updateStatus(expectedStatus);
     try {
-        setButtonLoading(elements.buttons.refresh, true);
-        const response = await fetch('?action=statusService');
-        if (!response.ok) throw new Error('状态请求失败');
-        
-        const data = await response.json();
-        if (!data.success) throw new Error(data.message || '状态获取失败');
-        
-        updateStatusImmediately(data.status);
-    } catch (error) {
-        console.error('刷新状态错误:', error);
-        showToast('状态刷新失败: ' + error.message, 'error');
-    } finally {
-        setButtonLoading(elements.buttons.refresh, false);
+        const data = await fetchJSON(`?action=${action}&_=${Date.now()}`);
+        if (data.success) {
+            updateStatus(data.status);
+            showToast(data.message || '操作成功');
+        } else {
+            showToast(data.message || '操作失败', 'error');
+            await fetchStatus(); // 恢复真实状态
+        }
+    } catch (err) {
+        showToast(err.message || '操作异常', 'error');
+        await fetchStatus();
     }
 }
 
-// 事件监听
-elements.buttons.start.addEventListener('click', () => performServiceAction('startService', elements.buttons.start));
-elements.buttons.stop.addEventListener('click', () => performServiceAction('stopService', elements.buttons.stop));
-elements.buttons.restart.addEventListener('click', () => performServiceAction('restartService', elements.buttons.restart));
-elements.buttons.refresh.addEventListener('click', refreshStatus);
-
-// 初始化
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('初始状态:', '<?php echo $currentStatus; ?>');
-});
+elements.buttons.start.addEventListener('click', () => performServiceAction('startService', 'running'));
+elements.buttons.stop.addEventListener('click', () => performServiceAction('stopService', 'stopped'));
+elements.buttons.restart.addEventListener('click', () => performServiceAction('restartService', 'running'));
+elements.buttons.refresh.addEventListener('click', fetchStatus);
 </script>
