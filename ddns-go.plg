@@ -1,97 +1,147 @@
 <?xml version='1.0' standalone='yes'?>
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "ddns-go">
-<!ENTITY author    "diy97">
-<!ENTITY version   "2025.08.08">
-<!ENTITY github    "diy97/ddns-go-unraid">
-<!ENTITY branch    "master">
-<!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/&branch;/ddns-go.plg">
+<!ENTITY author    "Gemini">
+<!ENTITY version   "2026.05.14">
+<!ENTITY launch    "Settings/ddns-go">
+<!ENTITY plugdir   "/boot/config/plugins/&name;">
+<!ENTITY github    "jeessy2/ddns-go">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/master/README.md">
 ]>
 
-<PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;" min="7.0.0" settings="plugins/ddns-go/settings.php">
+<PLUGIN  name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" min="6.9.0">
 
-  <DESCRIPTION>
-    A lightweight DDNS client for Unraid. Includes a settings page for service control and status monitoring. Modular installation.
-  </DESCRIPTION>
+<CHANGES>
+###2026.05.14
+- 初始版本：支持开始、停止、重启、升级及WebUI。
+</CHANGES>
 
-  <CHANGELOG>
-    2025.08.08 - Final modular version with separate UI and runtime files.
-  </CHANGELOG>
+<!-- 预安装阶段：创建必要的目录 -->
+<FILE Run="/bin/bash">
+<INLINE>
+mkdir -p &plugdir;
+mkdir -p /usr/local/emhttp/plugins/&name;/scripts
+</INLINE>
+</FILE>
 
-  <FILE Run="/bin/bash">
-    <INLINE>
-    <![CDATA[
-#!/bin/bash
-# 1、下载ddns-go及php相关文件
-# 1). 创建临时目录
-TMP_DIR="/tmp/ddns-go-unraid"
-rm -rf "$TMP_DIR"
-mkdir -p "$TMP_DIR"
+<!-- 下载并安装 ddns-go 二进制文件 -->
+<FILE Run="/bin/bash">
+<INLINE>
+echo "正在检测最新版本并下载 ddns-go..."
+# 获取最新版本下载链接 (Linux AMD64)
+LATEST_URL=$(curl -s https://api.github.com/repos/&github;/releases/latest | grep "browser_download_url.*linux_amd64.tar.gz" | cut -d '"' -f 4)
 
-# 2). 下载仓库并解压（只保留里面的 package/）
-curl -L https://github.com/diy97/ddns-go-unraid/archive/refs/heads/main.tar.gz \
-  | tar -xz --strip-components=1 -C "$TMP_DIR"
-
-# 3). 定位 package 目录
-PACKAGE_DIR="$TMP_DIR/package"
-
-# 4). 输出即将同步的文件
-echo "即将同步以下文件到 Unraid 系统："
-find "$PACKAGE_DIR" -type f
-
-# 5). 同步到系统
-rsync -av "$PACKAGE_DIR/" "/"
-
-# 6). 确保启动脚本可执行
-chmod +x /etc/rc.d/rc.ddns-go
-
-# 7). 清理临时文件
-rm -rf "$TMP_DIR"
-
-echo "安装完成并已清理临时文件。"
-
-# 2. 下载 ddns-go 二进制文件
-echo "Downloading ddns-go binary..."
-DDNS_GO_URL="https://github.com/jeessy2/ddns-go/releases/download/v6.12.1/ddns-go_6.12.1_linux_x86_64.tar.gz"
-TEMP_DIR="/tmp/ddns-go-install"
-BIN_DIR="/usr/local/bin"
-mkdir -p "$TEMP_DIR"
-wget --user-agent="Mozilla/5.0" -qO "$TEMP_DIR/ddns-go.tar.gz" "$DDNS_GO_URL"
-if [ $? -ne 0 ]; then
-  echo "Error: Failed to download ddns-go binary. Please check your Unraid server's network and DNS settings."
-  exit 1
-fi
-tar -xzf "$TEMP_DIR/ddns-go.tar.gz" -C "$TEMP_DIR"
-mv "$TEMP_DIR/ddns-go" "$BIN_DIR/ddns-go"
-chmod +x "$BIN_DIR/ddns-go"
-rm -rf "$TEMP_DIR"
-
-# 3. 设置权限和服务
-SERVICE_FILE="/etc/rc.d/rc.ddns-go"
-chmod +x "$SERVICE_FILE"
-grep -q "$SERVICE_FILE start" /boot/config/go || echo "$SERVICE_FILE start" >> /boot/config/go
-
-# 4. 启动服务
-if ! pgrep -f "ddns-go -c"; then
-    "$SERVICE_FILE" start
+if [ -z "$LATEST_URL" ]; then
+    echo "错误：无法获取下载链接。"
+    exit 1
 fi
 
-echo "ddns-go modular plugin installed successfully."
-    ]]>
-    </INLINE>
-  </FILE>
+curl -L "$LATEST_URL" -o /tmp/ddns-go.tar.gz
+tar -zxvf /tmp/ddns-go.tar.gz -C /usr/local/bin/ ddns-go
+chmod +x /usr/local/bin/ddns-go
+rm /tmp/ddns-go.tar.gz
+echo "ddns-go 二进制文件安装完成。"
+</INLINE>
+</FILE>
 
-  <FILE Run="/bin/bash" Method="remove">
-    <INLINE>
-    <![CDATA[
+<!-- 控制脚本 rc.ddns-go -->
+<FILE Name="/etc/rc.d/rc.&name;" Mode="0755">
+<INLINE>
 #!/bin/bash
-/etc/rc.d/rc.ddns-go stop
-rm -f /etc/rc.d/rc.ddns-go
-rm -f /usr/local/bin/ddns-go
-rm -rf /usr/local/emhttp/plugins/ddns-go
-sed -i '/rc.ddns-go start/d' /boot/config/go
-echo "ddns-go uninstalled."
-    ]]>
-    </INLINE>
-  </FILE>
+CONF="&plugdir;/ddns-go.yaml"
+BIN="/usr/local/bin/ddns-go"
+PIDFILE="/var/run/&name;.pid"
+
+ddns_go_start() {
+    if [ -f "$PIDFILE" ]; then
+        echo "ddns-go 已在运行。"
+    else
+        $BIN -f "$CONF" > /dev/null 2>&1 &
+        echo $! > "$PIDFILE"
+        echo "ddns-go 已启动。"
+    fi
+}
+
+ddns_go_stop() {
+    if [ -f "$PIDFILE" ]; then
+        kill $(cat "$PIDFILE")
+        rm "$PIDFILE"
+        echo "ddns-go 已停止。"
+    fi
+}
+
+ddns_go_status() {
+    if [ -f "$PIDFILE" ] &amp;&amp; ps -p $(cat "$PIDFILE") > /dev/null; then
+        echo "running"
+    else
+        echo "stopped"
+    fi
+}
+
+case "$1" in
+    'start')   ddns_go_start ;;
+    'stop')    ddns_go_stop ;;
+    'restart') ddns_go_stop; sleep 2; ddns_go_start ;;
+    'status')  ddns_go_status ;;
+    'upgrade')
+        echo "执行升级..."
+        LATEST_URL=$(curl -s https://api.github.com/repos/&github;/releases/latest | grep "browser_download_url.*linux_amd64.tar.gz" | cut -d '"' -f 4)
+        curl -L "$LATEST_URL" -o /tmp/ddns-go.tar.gz
+        tar -zxvf /tmp/ddns-go.tar.gz -C /usr/local/bin/ ddns-go
+        rm /tmp/ddns-go.tar.gz
+        /etc/rc.d/rc.&name; restart
+        ;;
+esac
+</INLINE>
+</FILE>
+
+<!-- WebGUI 页面映射 -->
+<FILE Name="/usr/local/emhttp/plugins/&name;/&name;.page">
+<INLINE>
+Menu="NetworkServices"
+Title="DDNS-GO"
+Icon="globe"
+---
+&lt;?php
+$name = "&name;";
+$status = shell_exec("/etc/rc.d/rc.$name status");
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'];
+    if (in_array($action, ['start', 'stop', 'restart', 'upgrade'])) {
+        shell_exec("/etc/rc.d/rc.$name $action");
+    }
+    header("Location: " . $_SERVER['REQUEST_URI']);
+    exit;
+}
+?&gt;
+
+&lt;div style="padding: 20px; border: 1px solid #ddd; background: #f9f9f9;"&gt;
+    &lt;h2&gt;DDNS-GO 控制面板&lt;/h2&gt;
+    &lt;p&gt;当前状态: &lt;strong&gt;&lt;?php echo trim($status); ?&gt;&lt;/strong&gt;&lt;/p&gt;
+    
+    &lt;form method="post"&gt;
+        &lt;button type="submit" name="action" value="start"&gt;开始&lt;/button&gt;
+        &lt;button type="submit" name="action" value="stop"&gt;停止&lt;/button&gt;
+        &lt;button type="submit" name="action" value="restart"&gt;重启&lt;/button&gt;
+        &lt;button type="submit" name="action" value="upgrade"&gt;升级&lt;/button&gt;
+    &lt;/form&gt;
+    
+    &lt;br/&gt;
+    &lt;button onclick="window.open('http://' + window.location.hostname + ':9876')" style="background-color: #4CAF50; color: white;"&gt;打开 WEBUI (端口 9876)&lt;/button&gt;
+&lt;/div&gt;
+</INLINE>
+</FILE>
+
+<!-- 卸载逻辑 -->
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+/etc/rc.d/rc.&name; stop
+rm -rf /usr/local/emhttp/plugins/&name;
+rm /usr/local/bin/ddns-go
+rm /etc/rc.d/rc.&name;
+echo "ddns-go 插件已卸载。"
+</INLINE>
+</FILE>
+
 </PLUGIN>
